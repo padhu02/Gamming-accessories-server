@@ -1,4 +1,8 @@
 const User = require("../models/User");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key_change_in_production";
 
 // User Registration
 exports.register = async (req, res) => {
@@ -12,6 +16,11 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
+    // Validate password length
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters long" });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
@@ -19,13 +28,16 @@ exports.register = async (req, res) => {
       return res.status(409).json({ message: "Email already registered" });
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     // Create new user
     const newUser = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
       phone,
       address,
-      password // Note: In production, hash the password using bcrypt
+      password: hashedPassword
     });
 
     console.log("User registered successfully:", newUser._id);
@@ -66,14 +78,19 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Verify password (in production, use bcrypt.compare)
-    if (user.password !== password) {
+    // Verify password using bcrypt
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
       console.log("Password mismatch for user:", email);
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Generate token (in production, use JWT)
-    const token = "token-" + Date.now();
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
     console.log("Login successful for:", email);
 
